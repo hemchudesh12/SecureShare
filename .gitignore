@@ -1,0 +1,43 @@
+# Environment & secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Databases (contain user data — never push)
+*.db
+*.sqlite
+*.sqlite3
+
+# Entire storage folder (encrypted files, keys, DBs)
+storage/
+
+# Private key files
+*.pem
+*.key
+
+# Temporary upload files
+tmp_*
+*.tmp
+*.temp
+
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & test output
+*.log
+perf_output.txt
+results/
+objects.txt
+test.txt

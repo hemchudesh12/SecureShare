@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% block title %}Security &amp; Keys{% endblock %}
+{% block page_title %}Security &amp; Keys{% endblock %}
+
+{% set org_name = org.org_name if org else None %}
+{% set email_verified = current_user.email_verified %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔐 Security &amp; Keys</h1>
+  <p>Manage your cryptographic keys and account security settings.</p>
+</div>
+
+{# ── Warning Banner ── #}
+<div class="warning-banner">
+  <div class="wb-icon">⚠️</div>
+  <div class="wb-text">
+    <h4>Keep your private key safe</h4>
+    <p>Never share your private key with anyone. Losing it means permanent loss of access to all your encrypted files.</p>
+  </div>
+</div>
+
+{# ── Public Key Panel ── #}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="key-panel-icon pub">🔑</div>
+      <div>
+        <h3>Public Key</h3>
+        <p>Your public key is safe to share. It allows others to encrypt files for you.</p>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="togglePublicKey()">
+      <span id="pubKeyToggleLabel">👁 View Public Key</span>
+    </button>
+    <a href="{{ url_for('auth.download_public_key', user_id=current_user.id) }}" class="btn btn-ghost">
+      ⬇ Download Public Key
+    </a>
+  </div>
+  <div class="key-reveal-area" id="publicKeyArea">
+    <textarea readonly>{{ current_user.public_key }}</textarea>
+  </div>
+</div>
+
+{# ── Private Key Panel ── #}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="key-panel-icon priv">🗝️</div>
+      <div>
+        <h3>Private Key</h3>
+        <p>Requires your password to access. Automatically hidden after 60 seconds.</p>
+      </div>
+    </div>
+  </div>
+
+  {# Reveal form #}
+  <form id="revealKeyForm" onsubmit="revealPrivateKey(event)" style="margin-bottom:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div id="revealFormInner" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0;">
+        <label class="form-label">Password</label>
+        <input type="password" class="form-control" id="revealPassword" name="password"
+          placeholder="Enter your login password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-warning">🔓 Unlock Private Key</button>
+    </div>
+  </form>
+
+  <div class="key-reveal-area" id="privateKeyArea">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <small style="color:#00e5a0;font-size:11px;">⏱ Auto-hides in <span id="countdownTimer">60</span>s</small>
+      <button class="btn btn-ghost btn-sm" onclick="hidePrivateKey()">🙈 Hide</button>
+    </div>
+    <textarea id="privateKeyText" readonly></textarea>
+  </div>
+
+  {# Download form #}
+  <form method="POST" action="{{ url_for('auth.download_private_key') }}" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0;">
+        <label class="form-label">Password to Download</label>
+        <input type="password" class="form-control" name="password"
+          placeholder="Enter password to download" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-secondary">⬇ Download Private Key (.pem)</button>
+    </div>
+  </form>
+</div>
+
+{# ── Password & Account ── #}
+<div class="card">
+  <div class="card-header">
+    <h3>🔑 Account Security</h3>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <a href="{{ url_for('auth.change_password') }}" class="btn btn-secondary">
+      🔑 Change Password
+    </a>
+    <span class="text-dim text-sm">Changing your password also re-encrypts your private key.</span>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let countdownInterval = null;
+
+  // Public Key
+  function togglePublicKey(){
+    const area  = document.getElementById('publicKeyArea');
+    const label = document.getElementById('pubKeyToggleLabel');
+    const visible = area.style.display === 'block';
+    area.style.display = visible ? 'none' : 'block';
+    label.textContent = visible ? '👁 View Public Key' : '🙈 Hide Public Key';
+  }
+
+  // Private Key - reveal
+  async function revealPrivateKey(e){
+    e.preventDefault();
+    const password = document.getElementById('revealPassword').value;
+    if(!password) return;
+    const formData = new FormData();
+    formData.append('password', password);
+    formData.append('csrf_token', document.querySelector('#revealKeyForm [name=csrf_token]').value);
+    try {
+      const res  = await fetch('{{ url_for('auth.get_private_key') }}', { method:'POST', body:formData });
+      const data = await res.json();
+      if(data.private_key){
+        document.getElementById('privateKeyText').value = data.private_key;
+        document.getElementById('privateKeyArea').style.display = 'block';
+        document.getElementById('revealFormInner').style.opacity = '.4';
+        document.getElementById('revealPassword').value = '';
+        startCountdown(60);
+      } else {
+        alert('❌ ' + (data.error || 'Incorrect password.'));
+      }
+    } catch(err){ alert('Network error. Please try again.'); }
+  }
+
+  function hidePrivateKey(){
+    document.getElementById('privateKeyText').value = '';
+    document.getElementById('privateKeyArea').style.display = 'none';
+    document.getElementById('revealFormInner').style.opacity = '1';
+    if(countdownInterval){ clearInterval(countdownInterval); countdownInterval=null; }
+  }
+
+  function startCountdown(secs){
+    let s = secs;
+    document.getElementById('countdownTimer').textContent = s;
+    if(countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(()=>{
+      s--;
+      document.getElementById('countdownTimer').textContent = s;
+      if(s<=0){ clearInterval(countdownInterval); hidePrivateKey(); }
+    }, 1000);
+  }
+</script>
+{% endblock %}

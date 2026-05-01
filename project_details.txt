@@ -1,0 +1,46 @@
+Project: SecureShare - Org-Scoped Encrypted File Sharing
+
+Overview:
+SecureShare is a Flask web application designed to facilitate secure, encrypted file sharing specifically scoped to organizations. The system emphasizes robust cryptographic principles, strict access controls, and detailed auditing. It ensures that files can only be accessed by intended recipients within the same organization and that all sensitive actions are tracked.
+
+Architecture:
+The application uses two distinct SQLite databases to separate concerns:
+1. Auth DB (auth.db): Manages Users, Organizations, Organization Requests, Audit Logs, Login Logs, and Password Resets.
+2. Files DB (files.db): Manages Files, File Shares (encrypted AES keys per recipient), and Verification Logs.
+
+Important Features:
+
+1. Advanced Cryptographic Security Model
+   - File Encryption: Uses AES-256-CBC chunk-based encryption for files, resulting in O(1) RAM usage regardless of file size.
+   - Key Wrapping: Uses RSA-2048/OAEP to encrypt the per-file AES keys uniquely for each recipient.
+   - Digital Signatures: Implements RSA-2048/PSS + SHA-256 to ensure file authenticity and integrity. Signatures are mandatorily verified upon file download.
+   - Key Storage: Private keys are never stored in plaintext. They are encrypted using PBKDF2 + AES-256 protected by the user's password.
+
+2. Organization-Scoped Access & Workflows
+   - Environment Isolation: Users belong to specific organizations, and files can only be shared with approved members of the same organization.
+   - Request-to-Join Workflow: Users can request to join an existing organization, which requires approval from an organization admin.
+   - Organizational Admins: Admins can approve or reject join requests and manage members within their organization.
+
+3. Robust Authentication & Protection Mechanisms
+   - OTP Verification: Email-based 6-digit OTP verification is tightly integrated into the registration process. User records are only committed to the database after successful OTP verification.
+   - Password Hashing: Uses bcrypt for secure password storage.
+   - Account Lockouts: Mitigates brute-force attacks by locking accounts for 15 minutes after 10 failed login attempts.
+   - Rate Limiting: Key endpoints (e.g., login, registration, OTP verification, private key retrieval) are rate-limited using Flask-Limiter to prevent abuse.
+
+4. Comprehensive Auditing and Logging
+   - Audit Trail: Maintains an immutable, append-only `AuditLog` table that tracks all sensitive actions (e.g., logins, key views, member approvals/rejections, organization creation). Logs are tied to the actor and their respective organization.
+   - Login Tracking: Logs all login attempts (success and failure) along with IP addresses into a dedicated `LoginLog`.
+   - Verification Logs: Tracks the outcome of cryptographic verification checks during file downloads.
+
+5. Separate Login Flows
+   - Differentiates between 'individual' and 'organization' login types, ensuring users log in with the correct context.
+
+6. Enhanced Views & Dashboard Extensions
+   - My Files (/my-files): A dedicated view for users to see files they have uploaded and monitor the number of recipients.
+   - Shared With Me (/shared-with-me): Allows users to view files received from others within the organization along with their latest verification status.
+   - Upload Page (/upload-page): A streamlined interface for uploading, encrypting, and securely sharing files with selected organization members.
+   - Security Page (/security): A dedicated view for managing user security settings.
+   - Admin Dashboard Improvements: Displays real-time statistics securely, including total users, pending join requests, and total files within the admin's organization.
+
+Summary:
+SecureShare operates as a zero-knowledge architecture within an organizational boundary. A user's private key controls their access, and because it's symmetrically encrypted using their password, the server cannot read the files. The combination of mandatory digital signatures, strict organization boundaries, and immutable audit logs ensures a highly secure environment for enterprise file sharing.

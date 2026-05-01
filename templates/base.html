@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SecureShare{% endblock %} — SecureShare</title>
+  <meta name="description" content="SecureShare — Secure, encrypted file sharing for organizations.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+{% if session.get('user_id') %}
+<!-- ═══════════════════ APP SHELL ═══════════════════ -->
+<div class="app-shell">
+
+  <!-- Sidebar Overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- ══ LEFT SIDEBAR ══ -->
+  <aside class="sidebar" id="sidebar">
+    <!-- Logo -->
+    <a href="{{ url_for('file.index') }}" class="sidebar-logo">
+      <div class="logo-icon">🔒</div>
+      <span class="logo-text">SecureShare</span>
+    </a>
+
+    <!-- Nav links -->
+    <nav class="sidebar-nav">
+      <span class="nav-section-label">Main</span>
+
+      <a href="{{ url_for('file.dashboard') }}"
+         class="sidebar-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        <span class="nav-icon">🏠</span> Dashboard
+      </a>
+
+      <a href="{{ url_for('file.upload_page') }}"
+         class="sidebar-link {% if request.endpoint == 'upload_page' %}active{% endif %}">
+        <span class="nav-icon">⬆️</span> Upload File
+      </a>
+
+      <a href="{{ url_for('file.my_files') }}"
+         class="sidebar-link {% if request.endpoint == 'my_files' %}active{% endif %}">
+        <span class="nav-icon">📁</span> My Files
+      </a>
+
+      <a href="{{ url_for('file.shared_with_me') }}"
+         class="sidebar-link {% if request.endpoint == 'shared_with_me' %}active{% endif %}">
+        <span class="nav-icon">📥</span> Shared With Me
+      </a>
+
+      <span class="nav-section-label">Organization</span>
+
+      <a href="{{ url_for('admin.list_organizations') }}"
+         class="sidebar-link {% if request.endpoint == 'list_organizations' %}active{% endif %}">
+        <span class="nav-icon">🏢</span> Organization
+      </a>
+
+      <a href="{{ url_for('file.security_page') }}"
+         class="sidebar-link {% if request.endpoint == 'security_page' %}active{% endif %}">
+        <span class="nav-icon">🔐</span> Security &amp; Keys
+      </a>
+
+      {% if session.get('is_admin') %}
+      <span class="nav-section-label">Admin</span>
+      <a href="{{ url_for('admin.admin_dashboard') }}"
+         class="sidebar-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+        <span class="nav-icon">🛠️</span> Admin Panel
+      </a>
+      {% endif %}
+
+      <span class="nav-section-label">Account</span>
+
+      <a href="{{ url_for('auth.change_password') }}"
+         class="sidebar-link {% if request.endpoint == 'change_password' %}active{% endif %}">
+        <span class="nav-icon">🔑</span> Change Password
+      </a>
+
+      <a href="{{ url_for('auth.logout') }}" class="sidebar-link danger">
+        <span class="nav-icon">🚪</span> Logout
+      </a>
+    </nav>
+
+    <!-- User info at bottom -->
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar">{{ session.get('username', 'U')[0].upper() }}</div>
+        <div class="sidebar-user-info">
+          <div class="name">{{ session.get('username', '') }}</div>
+          <div class="role">{% if session.get('is_admin') %}Admin{% else %}Member{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN AREA ══ -->
+  <div class="main-area">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">☰</button>
+        <span class="topbar-title">{% block page_title %}SecureShare{% endblock %}</span>
+      </div>
+      <div class="topbar-right">
+        {% if org_name is defined and org_name %}
+        <div class="topbar-org">🏢 <strong>{{ org_name }}</strong></div>
+        {% endif %}
+        {% if email_verified is defined %}
+          {% if email_verified %}
+          <span class="verified-badge">✔ Verified</span>
+          {% else %}
+          <span class="unverified-badge">⚠ Unverified</span>
+          {% endif %}
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main class="page-content">
+      {# Flash messages #}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+        <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+</div><!-- /.app-shell -->
+
+{% else %}
+<!-- ═══ NO SESSION: minimal shell for auth pages ═══ -->
+<div class="auth-shell">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);width:min(460px,92vw);z-index:999;">
+    <ul class="flash-list">
+      {% for category, message in messages %}
+      <li class="flash flash-{{ category }}">{{ message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endwith %}
+  {% block auth_content %}{% endblock %}
+</div>
+{% endif %}
+
+<script>
+  function toggleSidebar(){
+    const s = document.getElementById('sidebar');
+    const o = document.getElementById('sidebarOverlay');
+    s.classList.toggle('open');
+    o.classList.toggle('active');
+  }
+  function closeSidebar(){
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('active');
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

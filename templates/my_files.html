@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}My Files{% endblock %}
+{% block page_title %}My Files{% endblock %}
+
+{% set org_name = org.org_name if org else None %}
+{% set email_verified = current_user.email_verified %}
+
+{% block content %}
+<div class="page-header-row">
+  <div>
+    <h1>📁 My Files</h1>
+    <p>Files you have uploaded and shared with others.</p>
+  </div>
+  <a href="{{ url_for('file.upload_page') }}" class="btn btn-primary">⬆️ Upload New File</a>
+</div>
+
+<div class="card">
+  {% if files %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>File Name</th>
+          <th>Recipients</th>
+          <th>Size</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file_record, share, recipient_count in files %}
+        <tr>
+          <td>
+            <div class="table-file-name">{{ file_record.filename }}</div>
+            <div class="table-meta">Uploaded by you</div>
+          </td>
+          <td>
+            <span class="badge badge-info">{{ recipient_count }} recipient{{ 's' if recipient_count != 1 }}</span>
+          </td>
+          <td class="text-muted text-sm">
+            {{ (file_record.file_size / 1024) | round(1) }} KB
+          </td>
+          <td class="text-muted text-sm">
+            {{ file_record.upload_date.strftime('%b %d, %Y') }}<br>
+            <span style="color:var(--text-dim);font-size:11px;">{{ file_record.upload_date.strftime('%H:%M') }}</span>
+          </td>
+          <td>
+            <div class="action-cell" style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+              <div style="display:flex; gap:6px;">
+                <a href="{{ url_for('file.download_file', file_id=file_record.id) }}" class="btn btn-primary btn-sm">⬇ Download</a>
+                <a href="{{ url_for('file.verify_signature_standalone', file_id=file_record.id) }}" class="btn btn-ghost btn-sm">✔ Verify</a>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="showAccessHistory({{ file_record.id }})">🕒 History</button>
+              </div>
+            </div>
+            <div style="margin-top: 10px; font-size: 12px; background:var(--surface-2); padding:8px; border-radius:6px;">
+              <strong>Recipient Details:</strong>
+              <ul style="list-style-type: none; padding-left: 0; margin-top: 5px; margin-bottom:0;">
+              {% for share_info in share %}
+                <li style="margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 4px; display:flex; justify-content:space-between; align-items:center;">
+                  <span>
+                    <span style="font-weight:600;">{{ share_info.user.username }}</span> — 
+                    {% if share_info.share.is_revoked %}
+                      <span class="badge" style="background:var(--danger);color:#fff">Revoked</span>
+                    {% else %}
+                      <span class="text-dim dl-count" data-share-id="{{ share_info.share.id }}">DL: {{ share_info.share.download_count }}/{{ share_info.share.download_limit or '∞' }}</span>
+                      {% if share_info.share.expiry_time %}
+                        <span class="text-dim">| Exp: {{ share_info.share.expiry_time.strftime('%Y-%m-%d %H:%M') }}</span>
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                  {% if not share_info.share.is_revoked %}
+                  <form action="{{ url_for('file.revoke_access') }}" method="POST" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="file_id" value="{{ file_record.id }}">
+                    <input type="hidden" name="recipient_id" value="{{ share_info.user.id }}">
+                    <button type="submit" class="btn btn-danger btn-sm" style="padding:2px 6px; font-size:11px;" onclick="return confirm('Revoke access for {{ share_info.user.username }}?')">Revoke</button>
+                  </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+              </ul>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📭</div>
+    <p>You haven't uploaded any files yet.</p>
+    <a href="{{ url_for('file.upload_page') }}" class="btn btn-primary" style="margin-top:16px;">Upload your first file</a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Access History Modal -->
+<div id="historyModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
+  <div style="background:var(--surface); padding:24px; border-radius:12px; width:700px; max-width:90%; box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3 style="margin:0;">🕒 File Access History</h3>
+      <button onclick="document.getElementById('historyModal').style.display='none'" style="border:none; background:none; font-size:24px; cursor:pointer; color:var(--text);">&times;</button>
+    </div>
+    <div style="max-height:450px; overflow-y:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:14px; text-align:left;">
+        <thead style="background:var(--surface-2); position:sticky; top:0;">
+          <tr>
+            <th style="padding:10px; border-bottom:1px solid var(--border);">User</th>
+            <th style="padding:10px; border-bottom:1px solid var(--border);">Time</th>
+            <th style="padding:10px; border-bottom:1px solid var(--border);">IP Address</th>
+            <th style="padding:10px; border-bottom:1px solid var(--border);">Status</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Real-time download counts via Server-Sent Events ──────────────────────────
+(function () {
+    const spans = document.querySelectorAll('.dl-count[data-share-id]');
+    if (!spans.length) return;   // no shared files on page, skip
+
+    function applyUpdate(payload) {
+        const { share_id, download_count, download_limit, is_revoked } = payload;
+        const el = document.querySelector(`.dl-count[data-share-id="${share_id}"]`);
+        if (!el) return;
+
+        if (is_revoked) {
+            if (!el.dataset.wasRevoked) window.location.reload();
+            el.dataset.wasRevoked = 'true';
+            return;
+        }
+
+        const limit = download_limit !== null ? download_limit : '∞';
+        const newText = `DL: ${download_count}/${limit}`;
+        if (el.textContent.trim() === newText) return;   // no change
+
+        el.textContent = newText;
+        // brief green flash to signal a live update
+        el.style.transition = 'color 0.4s';
+        el.style.color = 'var(--accent, #4ade80)';
+        setTimeout(() => { el.style.color = ''; }, 1400);
+    }
+
+    function connectSSE() {
+        const evtSrc = new EventSource('/sse/download-counts');
+
+        evtSrc.onmessage = function (e) {
+            try {
+                applyUpdate(JSON.parse(e.data));
+            } catch (_) {}
+        };
+
+        evtSrc.onerror = function () {
+            // Browser will auto-reconnect after ~3 s (SSE spec).
+            // Nothing extra needed.
+        };
+
+        // Clean up when the user navigates away
+        window.addEventListener('beforeunload', () => evtSrc.close());
+    }
+
+    connectSSE();
+})();
+
+// ── Access History Modal ───────────────────────────────────────────────────────
+function showAccessHistory(fileId) {
+    document.getElementById('historyModal').style.display = 'flex';
+    document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="4" style="padding:10px; text-align:center;">Loading...</td></tr>';
+    fetch('/file-access-history/' + fileId)
+        .then(res => res.json())
+        .then(data => {
+            let html = '';
+            if (data.history.length === 0) {
+                html = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--text-dim);">No access events recorded.</td></tr>';
+            } else {
+                data.history.forEach(log => {
+                    let statusColor = log.status === 'VALID' ? 'var(--success)' : 'var(--danger)';
+                    let statusIcon = log.status === 'VALID' ? '✔' : '❌';
+                    html += `
+                        <tr style="border-bottom:1px solid var(--border);">
+                            <td style="padding:10px;">${log.user}</td>
+                            <td style="padding:10px; color:var(--text-dim);">${log.time}</td>
+                            <td style="padding:10px; color:var(--text-dim);">${log.ip}</td>
+                            <td style="padding:10px; color:${statusColor}; font-weight:600;">
+                                ${statusIcon} ${log.status}
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+            document.getElementById('historyTableBody').innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="4" style="padding:10px; text-align:center; color:var(--danger);">Error loading history.</td></tr>';
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}Shared With Me{% endblock %}
+{% block page_title %}Shared With Me{% endblock %}
+
+{% set org_name = org.org_name if org else None %}
+{% set email_verified = current_user.email_verified %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📥 Shared With Me</h1>
+  <p>Files that your organization members have securely shared with you.</p>
+</div>
+
+<div class="card">
+  {% if files %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>File Name</th>
+          <th>Sender</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file_record, share, sender_user in files %}
+        <tr>
+          <td>
+            <div class="table-file-name">{{ file_record.filename }}</div>
+            <div class="table-meta">{{ (file_record.file_size / 1024) | round(1) }} KB</div>
+          </td>
+          <td>
+            {% if file_record.sender_id == current_user.id %}
+            <span class="text-dim text-sm"><em>You</em></span>
+            {% else %}
+            <div class="d-flex align-center gap-2">
+              <div class="recipient-avatar" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">
+                {{ sender_user.username[0].upper() if sender_user else '?' }}
+              </div>
+              <span style="font-size:13.5px;">{{ sender_user.username if sender_user else 'Unknown' }}</span>
+            </div>
+            {% endif %}
+          </td>
+          <td class="text-muted text-sm">
+            {{ file_record.upload_date.strftime('%b %d, %Y') }}<br>
+            <span style="color:var(--text-dim);font-size:11px;">{{ file_record.upload_date.strftime('%H:%M') }}</span>
+          </td>
+          <td>
+            {% set vlog = vlog_map.get(file_record.id) %}
+            {% if vlog and vlog.verification_status == 'VALID' %}
+              <span class="badge badge-success">✔ Verified</span>
+            {% elif vlog and vlog.verification_status == 'INVALID' %}
+              <span class="badge badge-danger">❌ Tampered</span>
+            {% else %}
+              <span class="badge badge-neutral">— Not checked</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="action-cell">
+              {% if current_user.is_approved %}
+              <a href="{{ url_for('file.download_file', file_id=file_record.id) }}" class="btn btn-primary btn-sm">⬇ Download</a>
+              <a href="{{ url_for('file.verify_signature_standalone', file_id=file_record.id) }}" class="btn btn-ghost btn-sm">✔ Verify</a>
+              {% else %}
+              <span class="badge badge-warning">🔒 Approval Required</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📭</div>
+    <p>No files have been shared with you yet.</p>
+    <p class="text-sm" style="margin-top:6px;">Ask an org member to share a file with you.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

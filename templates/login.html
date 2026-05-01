@@ -1,0 +1,432 @@
+{% extends 'auth_base.html' %}
+{% block auth_content %}
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    .auth-wrap {
+        min-height: calc(100vh - 120px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+    }
+
+    .auth-split {
+        display: flex;
+        max-width: 900px;
+        width: 100%;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+    }
+
+    /* ── Left panel (branding) ── */
+    .auth-brand-panel {
+        flex: 0 0 340px;
+        background: linear-gradient(145deg, #0f3460 0%, #16213e 50%, #0a1628 100%);
+        padding: 50px 36px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .auth-brand-panel::before {
+        content: '';
+        position: absolute;
+        top: -80px;
+        left: -80px;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(56, 139, 253, .25) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+
+    .auth-brand-panel::after {
+        content: '';
+        position: absolute;
+        bottom: -60px;
+        right: -60px;
+        width: 250px;
+        height: 250px;
+        background: radial-gradient(circle, rgba(35, 134, 54, .2) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+
+    .brand-logo {
+        font-size: 42px;
+        margin-bottom: 16px;
+    }
+
+    .brand-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 26px;
+        font-weight: 700;
+        color: #e6edf3;
+        margin-bottom: 10px;
+        line-height: 1.2;
+    }
+
+    .brand-sub {
+        font-size: 13px;
+        color: #8b949e;
+        line-height: 1.7;
+        margin-bottom: 32px;
+    }
+
+    .brand-features {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .brand-features li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12.5px;
+        color: #8b949e;
+    }
+
+    .brand-features li span.feat-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: rgba(56, 139, 253, .15);
+        border: 1px solid rgba(56, 139, 253, .25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    /* ── Right panel (form) ── */
+    .auth-form-panel {
+        flex: 1;
+        background: #161b22;
+        padding: 50px 44px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .auth-form-panel h2 {
+        font-family: 'Inter', sans-serif;
+        font-size: 24px;
+        font-weight: 700;
+        color: #e6edf3;
+        margin-bottom: 6px;
+    }
+
+    .auth-form-panel .auth-tagline {
+        color: #8b949e;
+        font-size: 13px;
+        margin-bottom: 28px;
+    }
+
+    /* ── Type selector ── */
+    .login-type-selector {
+        display: flex;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 4px;
+        gap: 4px;
+        margin-bottom: 22px;
+    }
+
+    .ltype-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 10px 0;
+        border-radius: 7px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        color: #8b949e;
+        transition: all .2s;
+        user-select: none;
+    }
+
+    .ltype-btn input[type=radio] {
+        display: none;
+    }
+
+    .ltype-btn.active {
+        background: #1f6feb;
+        color: #fff;
+        box-shadow: 0 2px 12px rgba(31, 111, 235, .4);
+    }
+
+    .ltype-btn:not(.active):hover {
+        color: #c9d1d9;
+        background: rgba(255, 255, 255, .04);
+    }
+
+    /* ── Org dropdown panel ── */
+    .org-panel {
+        display: none;
+        animation: slideDown .2s ease;
+    }
+
+    .org-panel.visible {
+        display: block;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* ── Input groups ── */
+    .input-group {
+        position: relative;
+        margin-bottom: 16px;
+    }
+
+    .input-group label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        margin-bottom: 6px;
+        margin-top: 0;
+    }
+
+    .input-group .input-icon {
+        position: absolute;
+        left: 14px;
+        bottom: 13px;
+        font-size: 15px;
+        pointer-events: none;
+        opacity: .5;
+    }
+
+    .input-group input,
+    .input-group select {
+        display: block;
+        width: 100%;
+        padding-left: 38px !important;
+        border-radius: 8px;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        color: #c9d1d9;
+        font-size: 14px;
+        height: 42px;
+        transition: border-color .2s, box-shadow .2s;
+    }
+
+    .input-group input:focus,
+    .input-group select:focus {
+        border-color: #388bfd;
+        box-shadow: 0 0 0 3px rgba(56, 139, 253, .15);
+        outline: none;
+    }
+
+    /* ── Submit button ── */
+    .btn-submit {
+        width: 100%;
+        padding: 13px;
+        background: linear-gradient(135deg, #1f6feb, #238636);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-top: 8px;
+        transition: opacity .2s, transform .15s, box-shadow .2s;
+        box-shadow: 0 4px 20px rgba(31, 111, 235, .3);
+        letter-spacing: .3px;
+    }
+
+    .btn-submit:hover {
+        opacity: .92;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 26px rgba(31, 111, 235, .45);
+    }
+
+    .btn-submit:active {
+        transform: scale(.98);
+    }
+
+    /* ── Links ── */
+    .auth-footer-links {
+        margin-top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .auth-footer-links a {
+        color: #388bfd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: color .15s;
+    }
+
+    .auth-footer-links a:hover {
+        color: #58a6ff;
+        text-decoration: underline;
+    }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 18px 0;
+        color: #30363d;
+        font-size: 12px;
+    }
+
+    .divider::before,
+    .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #30363d;
+    }
+
+    @media (max-width: 680px) {
+        .auth-brand-panel {
+            display: none;
+        }
+
+        .auth-form-panel {
+            padding: 36px 24px;
+            border-radius: 16px;
+        }
+
+        .auth-split {
+            border-radius: 16px;
+        }
+    }
+</style>
+
+<div class="auth-wrap">
+    <div class="auth-split">
+
+        <!-- Brand Panel -->
+        <div class="auth-brand-panel">
+            <div class="brand-logo">🔒</div>
+            <div class="brand-title">SecureShare</div>
+            <p class="brand-sub">End-to-end encrypted file sharing with military-grade cryptography.</p>
+            <ul class="brand-features">
+                <li><span class="feat-icon">🔐</span> AES-256-CBC Encryption</li>
+                <li><span class="feat-icon">🗝️</span> RSA-2048 Key Exchange</li>
+                <li><span class="feat-icon">✍️</span> RSA-PSS Digital Signatures</li>
+                <li><span class="feat-icon">🏢</span> Organization-Scoped Sharing</li>
+                <li><span class="feat-icon">📋</span> Immutable Audit Trail</li>
+            </ul>
+        </div>
+
+        <!-- Form Panel -->
+        <div class="auth-form-panel">
+            <h2>Welcome back</h2>
+            <p class="auth-tagline">Sign in to your secure account</p>
+
+            <form method="POST" action="{{ url_for('auth.login') }}" id="loginForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <!-- Login type selector -->
+                <div class="login-type-selector">
+                    <label class="ltype-btn active" id="btn-individual" onclick="setType('individual')">
+                        <input type="radio" name="login_type" value="individual" checked>
+                        👤 Individual
+                    </label>
+                    <label class="ltype-btn" id="btn-org" onclick="setType('org')">
+                        <input type="radio" name="login_type" value="org">
+                        🏢 Organization
+                    </label>
+                </div>
+
+                <!-- Org dropdown -->
+                <div class="org-panel" id="orgPanel">
+                    <div class="input-group">
+                        <label for="org_id">Organization</label>
+                        <span class="input-icon">🏢</span>
+                        {% if orgs %}
+                        <select id="org_id" name="org_id">
+                            <option value="">— Select your organization —</option>
+                            {% for org in orgs %}
+                            <option value="{{ org.id }}">{{ org.org_name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <select id="org_id" name="org_id" disabled>
+                            <option>No organizations yet</option>
+                        </select>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Username -->
+                <div class="input-group">
+                    <label for="username">Username</label>
+                    <span class="input-icon">👤</span>
+                    <input type="text" id="username" name="username" required autocomplete="username"
+                        placeholder="Enter your username">
+                </div>
+
+                <!-- Password -->
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <span class="input-icon">🔑</span>
+                    <input type="password" id="password" name="password" required autocomplete="current-password"
+                        placeholder="Enter your password">
+                </div>
+
+                <button type="submit" class="btn-submit">Sign In →</button>
+            </form>
+
+            <div class="divider">or</div>
+
+            <div class="auth-footer-links">
+                <a href="{{ url_for('auth.register') }}">Don't have an account? <strong>Register</strong></a>
+                <a href="{{ url_for('auth.change_password') }}">Forgot / Change Password?</a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    function setType(type) {
+        const orgPanel = document.getElementById('orgPanel');
+        const orgSelect = document.getElementById('org_id');
+        const btnInd = document.getElementById('btn-individual');
+        const btnOrg = document.getElementById('btn-org');
+
+        if (type === 'org') {
+            orgPanel.classList.add('visible');
+            if (orgSelect) orgSelect.required = true;
+            btnOrg.classList.add('active');
+            btnInd.classList.remove('active');
+            btnOrg.querySelector('input').checked = true;
+        } else {
+            orgPanel.classList.remove('visible');
+            if (orgSelect) orgSelect.required = false;
+            btnInd.classList.add('active');
+            btnOrg.classList.remove('active');
+            btnInd.querySelector('input').checked = true;
+        }
+    }
+</script>
+{% endblock %}

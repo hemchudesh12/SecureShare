@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% set org_name = org.org_name if org else None %}
+{% set email_verified = current_user.email_verified %}
+
+{% block content %}
+
+{# ── Welcome Banner ── #}
+<div class="page-header-row">
+  <div>
+    <h1>👋 Welcome back, {{ current_user.username }}!</h1>
+    <p>
+      {% if org %}
+        Member of <strong>{{ org.org_name }}</strong>
+      {% else %}
+        Standalone account &mdash; no organization yet.
+      {% endif %}
+    </p>
+  </div>
+  {% if org %}
+  <span class="badge badge-info" style="align-self:flex-start;font-size:12px;">🏢 {{ org.org_name }}</span>
+  {% endif %}
+</div>
+
+{# ── Approval / Verification Alerting ── #}
+{% if not current_user.email_verified %}
+<div class="alert-box alert-warning" style="margin-bottom:20px;">
+  <span>📧</span>
+  <div>
+    <strong>Email not verified.</strong> You need to verify your email address to upload or receive files.
+    <form method="POST" action="{{ url_for('auth.resend_otp') }}" style="display:inline;margin-left:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-warning btn-sm">Resend OTP</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if not current_user.is_approved %}
+<div class="alert-box alert-warning" style="margin-bottom:20px;">
+  <span>⏳</span>
+  <div>
+    {% if pending_request %}
+      <strong>Approval pending.</strong> Your request to join an organization is awaiting admin approval. File operations will be enabled once approved.
+    {% else %}
+      <strong>Account pending approval.</strong> File sharing will be unlocked once an admin approves your account.
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Stats Cards ── #}
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-icon">📤</div>
+    <div class="stat-value">{{ files_uploaded_count }}</div>
+    <div class="stat-label">Files Uploaded</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon">📥</div>
+    <div class="stat-value">{{ files_received_count }}</div>
+    <div class="stat-label">Files Received</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-icon">👥</div>
+    <div class="stat-value">{{ members_count }}</div>
+    <div class="stat-label">Org Members</div>
+  </div>
+</div>
+
+{# ── Quick Actions ── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>⚡ Quick Actions</h3>
+  </div>
+  <div class="quick-actions" style="margin-bottom:0;">
+    <a href="{{ url_for('file.upload_page') }}" class="quick-action-card">
+      <div class="qa-icon">⬆️</div>
+      <div>
+        <div class="qa-title">Upload File</div>
+        <div class="qa-desc">Securely share a file with org members</div>
+      </div>
+    </a>
+    <a href="{{ url_for('file.my_files') }}" class="quick-action-card">
+      <div class="qa-icon" style="background:var(--success-dim);">📁</div>
+      <div>
+        <div class="qa-title">My Files</div>
+        <div class="qa-desc">View files you've uploaded</div>
+      </div>
+    </a>
+    <a href="{{ url_for('file.shared_with_me') }}" class="quick-action-card">
+      <div class="qa-icon" style="background:var(--purple-dim);">📥</div>
+      <div>
+        <div class="qa-title">Shared With Me</div>
+        <div class="qa-desc">Files your teammates shared</div>
+      </div>
+    </a>
+    <a href="{{ url_for('admin.list_organizations') }}" class="quick-action-card">
+      <div class="qa-icon" style="background:var(--warning-dim);">🏢</div>
+      <div>
+        <div class="qa-title">Organization</div>
+        <div class="qa-desc">Manage members &amp; requests</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+{# ── Org Requests ── #}
+{% if current_user.is_admin and pending_requests %}
+<div class="card">
+  <div class="card-header">
+    <h3>📨 Pending Join Requests <span class="sidebar-badge" style="position:static;margin-left:8px;">{{ pending_requests|length }}</span></h3>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-ghost btn-sm">View All</a>
+  </div>
+  {% for item in pending_requests[:3] %}
+  <div class="join-req-card">
+    <div class="join-req-info">
+      <div class="join-req-avatar">{{ item.user.username[0].upper() if item.user else '?' }}</div>
+      <div>
+        <div class="join-req-name">{{ item.user.username if item.user else 'Unknown' }}</div>
+        <div class="join-req-time">wants to join {{ item.org.org_name if item.org else 'org' }} · {{ item.req.requested_at.strftime('%b %d') }}</div>
+      </div>
+    </div>
+    <div class="join-req-actions">
+      <form method="POST" action="{{ url_for('admin.approve_user', request_id=item.req.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-success btn-sm">✔ Approve</button>
+      </form>
+      <form method="POST" action="{{ url_for('admin.reject_user', request_id=item.req.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Reject</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

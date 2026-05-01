@@ -1,0 +1,324 @@
+{% extends 'base.html' %}
+{% block title %}Admin Panel{% endblock %}
+{% block page_title %}Admin Dashboard{% endblock %}
+
+{% set org_name = admin_org.org_name if admin_org else None %}
+
+{% block content %}
+<div class="page-header-row">
+  <div>
+    <h1>🛠️ Admin Panel</h1>
+    {% if admin_org %}
+    <p>Managing organization: <strong>{{ admin_org.org_name }}</strong></p>
+    {% else %}
+    <p style="color:var(--warning);">⚠️ You are not assigned to any organization yet.</p>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:10px;">
+    {% if not admin_org %}
+    <a href="{{ url_for('admin.create_organization') }}" class="btn btn-primary">🏢 Create Org</a>
+    {% endif %}
+    <a href="{{ url_for('admin.open_storage') }}" class="btn btn-secondary">📂 Open Storage</a>
+  </div>
+</div>
+
+{# ── Stats Overview ── #}
+<div class="stats-grid">
+  <div class="stat-card purple">
+    <div class="stat-icon">👥</div>
+    <div class="stat-value">{{ total_users }}</div>
+    <div class="stat-label">Total Members</div>
+  </div>
+  <div class="stat-card yellow">
+    <div class="stat-icon">📨</div>
+    <div class="stat-value">{{ pending_count }}</div>
+    <div class="stat-label">Pending Requests</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon">📦</div>
+    <div class="stat-value">{{ total_files }}</div>
+    <div class="stat-label">Total Files Managed</div>
+  </div>
+</div>
+
+{# ── Tabs Layout ── #}
+<div class="card" style="padding:0;overflow:hidden;">
+  <div style="background:var(--surface-2);padding:14px 20px 0;">
+    <nav class="tab-nav" id="adminTabs">
+      <button class="tab-btn active" onclick="switchTab('reqs')">
+        📨 Join Requests {% if pending_count > 0 %}<span class="sidebar-badge" style="position:static;margin-left:4px;">{{ pending_count }}</span>{% endif %}
+      </button>
+      <button class="tab-btn" onclick="switchTab('members')">👥 Members</button>
+      <button class="tab-btn" onclick="switchTab('files')">📦 Files</button>
+      <button class="tab-btn" onclick="switchTab('audit')">📋 Audit Logs</button>
+    </nav>
+  </div>
+
+  <div style="padding:24px;">
+    
+    {# ── Tab 1: Requests ── #}
+    <div id="tab-reqs" class="tab-pane active">
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:600;color:#e2e8f0;">Pending Join Requests</h3>
+        <p class="text-sm text-dim">Review and approve users requesting to join your organization.</p>
+      </div>
+
+      {% if req_data %}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:14px;">
+        {% for item in req_data %}
+        <div class="card" style="padding:16px;margin:0;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div class="sidebar-avatar" style="width:40px;height:40px;font-size:16px;">
+              {{ item.user.username[0].upper() if item.user else '?' }}
+            </div>
+            <div>
+              <div style="font-size:15px;font-weight:600;color:var(--text);">{{ item.user.username if item.user else 'Unknown' }}</div>
+              <div style="font-size:12px;color:var(--text-dim);">Requested: {{ item.req.requested_at.strftime('%b %d, %Y %H:%M') }}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <form method="POST" action="{{ url_for('admin.approve_user', request_id=item.req.id) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-success btn-full">✅ Approve</button>
+            </form>
+            <form method="POST" action="{{ url_for('admin.reject_user', request_id=item.req.id) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-ghost btn-full">❌ Reject</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">✓</div>
+        <p>No pending join requests.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── Tab 2: Members ── #}
+    <div id="tab-members" class="tab-pane">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h3 style="font-size:16px;font-weight:600;color:#e2e8f0;">Organization Members</h3>
+          <p class="text-sm text-dim">Manage users within your organization.</p>
+        </div>
+        <div class="search-bar" style="margin:0;min-width:260px;">
+          <span>🔍</span>
+          <input type="text" id="memberSearch" placeholder="Search members…" oninput="filterMembers()">
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="membersTable">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Status</th>
+              <th>Role</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr class="member-row">
+              <td>
+                <div class="d-flex align-center gap-3">
+                  <div class="recipient-avatar">{{ u.username[0].upper() }}</div>
+                  <div>
+                    <div class="member-name" style="font-size:14px;font-weight:500;color:#e2e8f0;">{{ u.username }}</div>
+                    <div class="text-dim text-sm">ID: {{ u.id }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if u.is_approved %}
+                <span class="badge badge-success">Approved</span>
+                {% else %}
+                <span class="badge badge-warning">Pending</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {% if u.is_admin %}badge-admin{% else %}badge-neutral{% endif %}">
+                  {{ '👑 Admin' if u.is_admin else 'Member' }}
+                </span>
+              </td>
+              <td style="text-align:right;">
+                {% if not u.is_admin and u.is_approved %}
+                <form method="POST" action="{{ url_for('admin.remove_user', user_id=u.id) }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-ghost btn-danger btn-sm" onclick="return confirm('Remove {{ u.username }} from the organization?')">Remove</button>
+                </form>
+                {% else %}
+                <span class="text-dim text-sm">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Tab 3: Files ── #}
+    <div id="tab-files" class="tab-pane">
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:600;color:#e2e8f0;">Encrypted Files Registry</h3>
+        <p class="text-sm text-dim">Metadata of all files managed by this organization. Ciphertexts cannot be decrypted by admins without recipient keys.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Filename</th>
+              <th>Sender</th>
+              <th>Size</th>
+              <th>Date</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for file in files %}
+            <tr>
+              <td>
+                <div style="font-size:13.5px;font-weight:500;color:#e2e8f0;word-break:break-all;">{{ file.filename }}</div>
+                <div class="text-dim" style="font-size:11px;font-family:monospace;margin-top:2px;">ID: {{ file.id }}</div>
+              </td>
+              <td>{{ user_map.get(file.sender_id, 'Unknown') }}</td>
+              <td>{{ (file.file_size / 1024) | round(1) }} KB</td>
+              <td>
+                {{ file.upload_date.strftime('%b %d, %Y') }}<br>
+                <span class="text-dim text-sm">{{ file.upload_date.strftime('%H:%M') }}</span>
+              </td>
+              <td style="text-align:right;">
+                <a href="{{ url_for('admin.download_raw', file_id=file.id) }}" class="btn btn-secondary btn-sm" title="Download encrypted blob format">
+                  ⬇ Ciphertext
+                </a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-dim);">No files managed yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Tab 4: Audit Logs ── #}
+    <div id="tab-audit" class="tab-pane">
+      <div style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <h3 style="font-size:16px;font-weight:600;color:#e2e8f0;">System Audit Logs</h3>
+          <p class="text-sm text-dim">Immutable record of all organization activity.</p>
+        </div>
+        <a href="{{ url_for('admin.verify_audit_chain') }}" class="btn btn-primary btn-sm">✔ Verify Audit Chain</a>
+      </div>
+
+      <div class="filters-row">
+        <select class="filter-select" id="auditActionFilter" onchange="filterAudit()">
+          <option value="">All Actions</option>
+          <option value="SUCCESS">Success Actions</option>
+          <option value="FAIL">Failed Actions</option>
+          <option value="DENIED">Blocks / Denials</option>
+          <option value="UPLOAD">Uploads</option>
+          <option value="DOWNLOAD">Downloads</option>
+        </select>
+        <div class="search-bar" style="margin:0;flex:1;min-width:200px;background:transparent;">
+          <span>🔍</span>
+          <input type="text" id="auditSearch" placeholder="Search user or details…" oninput="filterAudit()">
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="auditTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>User</th>
+              <th>Action</th>
+              <th>Target</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in audit_logs %}
+            {% set actor_name = user_map.get(log.actor_id, 'System') %}
+            <tr class="audit-row" data-action="{{ log.action }}" data-actor="{{ actor_name|lower }}" data-details="{{ log.details|lower if log.details else '' }}">
+              <td style="white-space:nowrap;">
+                <span style="font-size:12.5px;color:var(--text);">{{ log.timestamp.strftime('%Y-%m-%d') }}</span><br>
+                <span class="text-dim" style="font-size:11px;">{{ log.timestamp.strftime('%H:%M:%S') }}</span>
+              </td>
+              <td style="font-weight:500;">{{ actor_name }}</td>
+              <td>
+                <span class="badge 
+                  {% if 'FAIL' in log.action or 'BLOCK' in log.action or 'INVALID' in log.action or 'LOCK' in log.action or 'DENIED' in log.action %}badge-danger
+                  {% elif 'SUCCESS' in log.action or 'VERIFIED' in log.action or 'APPROVED' in log.action or 'UPLOADED' in log.action or 'DOWNLOADED' in log.action %}badge-success
+                  {% else %}badge-info{% endif %}" style="font-size:10px;padding:2px 6px;">
+                  {{ log.action }}
+                </span>
+              </td>
+              <td class="text-muted text-sm">{{ log.target_id or '—' }}</td>
+              <td class="text-dim text-sm" style="max-width:300px;word-wrap:break-word;">
+                {{ log.details or '—' }}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-dim);">No audit logs found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Tabs
+  function switchTab(tabId){
+    document.querySelectorAll('.tab-pane').forEach(el=>el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el=>el.classList.remove('active'));
+    document.getElementById('tab-'+tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  // Members search
+  function filterMembers(){
+    const q = document.getElementById('memberSearch').value.toLowerCase();
+    document.querySelectorAll('.member-row').forEach(row=>{
+      const name = row.querySelector('.member-name').textContent.toLowerCase();
+      row.style.display = name.includes(q) ? '' : 'none';
+    });
+  }
+
+  // Audit filter
+  function filterAudit(){
+    const actionVal = document.getElementById('auditActionFilter').value;
+    const q = document.getElementById('auditSearch').value.toLowerCase();
+    
+    document.querySelectorAll('.audit-row').forEach(row=>{
+      const actionTxt = row.getAttribute('data-action');
+      const actorTxt = row.getAttribute('data-actor');
+      const detailTxt = row.getAttribute('data-details');
+      
+      let matchAction = true;
+      if(actionVal){
+        matchAction = actionVal === 'UPLOAD' ? actionTxt.includes('UPLOAD') :
+                      actionVal === 'DOWNLOAD' ? actionTxt.includes('DOWNLOAD') :
+                      actionVal === 'SUCCESS' ? actionTxt.includes('SUCCESS') || actionTxt.includes('VERIFIED') || actionTxt.includes('APPROVED') :
+                      actionVal === 'FAIL' ? actionTxt.includes('FAIL') || actionTxt.includes('INVALID') :
+                      actionVal === 'DENIED' ? actionTxt.includes('DENIED') || actionTxt.includes('BLOCK') :
+                      actionTxt.includes(actionVal);
+      }
+      
+      const matchSearch = q === '' || actorTxt.includes(q) || detailTxt.includes(q) || actionTxt.toLowerCase().includes(q);
+      
+      row.style.display = (matchAction && matchSearch) ? '' : 'none';
+    });
+  }
+</script>
+{% endblock %}

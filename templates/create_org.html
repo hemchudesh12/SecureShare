@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="auth-card">
+    <h2>🏢 Create Organization</h2>
+    <form method="POST" action="{{ url_for('admin.create_organization') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="org_name">Organization Name</label>
+        <input type="text" id="org_name" name="org_name" required placeholder="e.g. Acme Corp">
+        <button type="submit" class="btn-primary full-width">Create Organization</button>
+    </form>
+    <p class="auth-link"><a href="{{ url_for('admin.admin_dashboard') }}">← Back to Admin</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends 'auth_base.html' %}
+{% block auth_content %}
+<div class="card" style="margin: 0 auto; max-width: 440px; text-align: center;">
+
+    <div style="margin-bottom:24px;">
+        <div style="font-size:48px;margin-bottom:8px;">🔐</div>
+        <h2 style="font-size:22px; font-weight:700; color:#f1f5f9; margin-bottom:6px;">Verify Your Email</h2>
+        <p style="color:var(--text-dim);margin:0;font-size:14px;">
+            We sent a 6-digit OTP to <strong style="color:#e2e8f0;">{{ email }}</strong>
+        </p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }}" style="margin-bottom:16px;">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="alert-box alert-info" style="margin-bottom:20px; text-align: left;">
+        <span>ℹ️</span>
+        <div>
+            ⏱ The OTP is valid for <strong>5 minutes</strong>.
+            Do <strong>not</strong> share it with anyone.
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('auth.verify_otp') }}" id="otpForm" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group" style="text-align: left;">
+            <label class="form-label" for="otp">Enter 6-Digit OTP</label>
+            <input type="text" class="form-control" id="otp" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required
+                placeholder="_ _ _ _ _ _" autofocus
+                style="font-size:28px;letter-spacing:10px;text-align:center;font-family:monospace;font-weight:bold; height:60px;">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" style="margin-top:4px;">
+            ✅ Verify OTP
+        </button>
+    </form>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:24px 0;">
+
+    <div>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:12px;">
+            Didn't receive the email? Check your spam folder or request a new OTP.
+        </p>
+        <form method="POST" action="{{ url_for('auth.resend_otp') }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary btn-sm">
+                🔄 Resend OTP
+            </button>
+        </form>
+    </div>
+
+    <div style="margin-top:24px;">
+        <a href="{{ url_for('auth.register') }}" style="color:var(--primary);text-decoration:none;font-size:13.5px;">← Back to Registration</a>
+    </div>
+</div>
+
+{% endblock %}

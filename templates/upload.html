@@ -1,0 +1,373 @@
+{% extends 'base.html' %}
+{% block title %}Upload File{% endblock %}
+{% block page_title %}Upload File{% endblock %}
+
+{% set org_name = org.org_name if org else None %}
+{% set email_verified = current_user.email_verified %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1>⬆️ Upload a File</h1>
+  <p>Securely encrypt and share a file with your organization members.</p>
+</div>
+
+{% if not current_user.email_verified or not current_user.is_approved %}
+<div class="alert-box alert-warning">
+  <span>🔒</span>
+  <div>You need a <strong>verified email</strong> and <strong>admin approval</strong> to upload files.</div>
+</div>
+{% else %}
+
+{# ── Step wizard indicator ── #}
+<div class="step-wizard">
+  <div class="step-item">
+    <div class="step-circle active" id="sc1">1</div>
+    <span class="step-label-txt active" id="sl1">Select File</span>
+  </div>
+  <div class="step-connector" id="conn1"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc2">2</div>
+    <span class="step-label-txt" id="sl2">Recipients</span>
+  </div>
+  <div class="step-connector" id="conn2"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc3">3</div>
+    <span class="step-label-txt" id="sl3">Security</span>
+  </div>
+  <div class="step-connector" id="conn3"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc4">4</div>
+    <span class="step-label-txt" id="sl4">Upload</span>
+  </div>
+</div>
+
+<form action="{{ url_for('file.upload_file') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {# ──────────── Step 1: Select File ──────────── #}
+  <div class="step-pane active" id="step1">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>📂 Step 1 — Select File</h3>
+          <p>Choose the file you want to securely share.</p>
+        </div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" name="file" id="fileInput" required>
+        <div class="dz-icon">📁</div>
+        <div class="dz-title">Drag &amp; drop your file here</div>
+        <div class="dz-sub">or click to browse — any file type supported</div>
+        <div class="dz-file-selected" id="fileSelectedMsg"></div>
+      </div>
+      <div style="margin-top:20px;text-align:right;">
+        <button type="button" class="btn btn-primary" onclick="goStep(2)" id="step1Next" disabled>
+          Next: Choose Recipients →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ──────────── Step 2: Recipients ──────────── #}
+  <div class="step-pane" id="step2">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>👥 Step 2 — Select Recipients</h3>
+          <p>Choose who can access this file. You're always included automatically.</p>
+        </div>
+      </div>
+
+      {% if org_members %}
+      <div class="search-bar recipient-search">
+        <span>🔍</span>
+        <input type="text" id="recipientSearch" placeholder="Search members…" oninput="filterRecipients()">
+      </div>
+      <div class="recipient-list-scroll" id="recipientList">
+        {% for member in org_members %}
+        <label class="recipient-item" id="ri_{{ member.id }}">
+          <input type="checkbox" name="recipients" value="{{ member.id }}">
+          <div class="recipient-avatar">{{ member.username[0].upper() }}</div>
+          <span class="recipient-name">{{ member.username }}</span>
+          <span class="badge {% if member.is_admin %}badge-admin{% else %}badge-neutral{% endif %}">
+            {{ '👑 Admin' if member.is_admin else member.role }}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <small class="text-dim" style="display:block;margin-top:8px;">
+        You will automatically be included as a recipient.
+      </small>
+      {% else %}
+      <div class="empty-state" style="padding:24px 0;">
+        <div class="empty-icon">👤</div>
+        <p>No other org members yet. The file will be shared with yourself only.</p>
+      </div>
+      {% endif %}
+
+      <div style="margin-top:20px;display:flex;justify-content:space-between;">
+        <button type="button" class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+        <button type="button" class="btn btn-primary" onclick="goStep(3)">
+          Next: Review Security →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ──────────── Step 3: Security Info ──────────── #}
+  <div class="step-pane" id="step3">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>🔐 Step 3 — Security Overview</h3>
+          <p>Your file will be protected before upload.</p>
+        </div>
+      </div>
+
+      <div class="security-info-card">
+        <div class="si-icon">🔒</div>
+        <div class="si-text">
+          <h4>Your file will be securely encrypted and digitally signed</h4>
+          <p>Only your selected recipients can decrypt and access this file. The signature ensures no one can tamper with it.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+        <div class="d-flex align-center gap-2" style="font-size:13.5px;">
+          <span style="color:var(--success);">✔</span>
+          <span>End-to-end encrypted — not readable in transit or at rest</span>
+        </div>
+        <div class="d-flex align-center gap-2" style="font-size:13.5px;">
+          <span style="color:var(--success);">✔</span>
+          <span>Digitally signed — any tampering will be detected on download</span>
+        </div>
+        <div class="d-flex align-center gap-2" style="font-size:13.5px;">
+          <span style="color:var(--success);">✔</span>
+          <span>Organization-scoped — only your org members can be recipients</span>
+        </div>
+        <div class="d-flex align-center gap-2" style="font-size:13.5px;">
+          <span style="color:var(--success);">✔</span>
+          <span>Audit logged — all actions are recorded</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px; padding:15px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2);">
+        <h4>Advanced Access Controls (Optional)</h4>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+          <div>
+            <label for="expiry_time" style="display:block; font-size:13px; font-weight:500; margin-bottom:4px;">Expiry Date & Time:</label>
+            <input type="datetime-local" id="expiry_time" name="expiry_time" class="form-control" style="width:100%; border:1px solid var(--border); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label for="download_limit" style="display:block; font-size:13px; font-weight:500; margin-bottom:4px;">Download Limit (per recipient):</label>
+            <input type="number" id="download_limit" name="download_limit" class="form-control" min="1" placeholder="e.g. 1" style="width:100%; border:1px solid var(--border); padding:8px; border-radius:4px;">
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;">
+        <button type="button" class="btn btn-ghost" onclick="goStep(2)">← Back</button>
+        <button type="button" class="btn btn-primary" onclick="goStep(4)">
+          Next: Upload →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ──────────── Step 4: Upload ──────────── #}
+  <div class="step-pane" id="step4">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>🚀 Step 4 — Secure Upload</h3>
+          <p>Everything looks good. Click below to upload.</p>
+        </div>
+      </div>
+
+      <div id="uploadSummary" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:20px;font-size:13.5px;">
+        <div><strong>File:</strong> <span id="summaryFile" style="color:var(--text-muted);">—</span></div>
+        <div style="margin-top:6px;"><strong>Recipients:</strong> <span id="summaryRecipients" style="color:var(--text-muted);">You only</span></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button type="button" class="btn btn-ghost" onclick="goStep(3)">← Back</button>
+        <button type="button" class="btn btn-success btn-lg" id="uploadBtn" onclick="startUpload()">
+          🚀 Secure Upload
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ── Upload Progress Overlay ── #}
+<div class="upload-progress" id="uploadProgress">
+  <div class="prog-card">
+    <div class="prog-icon">🔒</div>
+    <div class="prog-title" id="progressTitle">Encrypting file…</div>
+    <div class="prog-sub" id="progressSub">Generating secure encryption key</div>
+    <div class="spinner"></div>
+  </div>
+</div>
+
+{% endif %}
+
+{# ── Async progress bar (shown during Celery task) ── #}
+<div id="progress-wrap" style="display:none; margin-top:1.5rem; max-width:520px; margin-left:auto; margin-right:auto;">
+  <div id="progress-msg" style="margin-bottom:0.5rem; font-size:0.9rem; font-weight:500;"></div>
+  <div style="background:#e5e7eb; border-radius:8px; height:10px; overflow:hidden;">
+    <div id="progress-bar"
+         style="height:100%; width:0%; background:#4f46e5;
+                border-radius:8px; transition:width 0.4s ease;"></div>
+  </div>
+  <div id="progress-pct" style="margin-top:0.4rem; font-size:0.85rem; color:#6b7280;"></div>
+</div>
+<div id="upload-error"
+     style="display:none; color:#dc2626; margin-top:1rem; font-size:0.9rem;
+            max-width:520px; margin-left:auto; margin-right:auto;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Step navigation ──
+  function goStep(n) {
+    for(let i=1;i<=4;i++){
+      document.getElementById('step'+i).classList.remove('active');
+      document.getElementById('sc'+i).classList.remove('active','done');
+      document.getElementById('sl'+i).classList.remove('active');
+    }
+    document.getElementById('step'+n).classList.add('active');
+    for(let i=1;i<n;i++){
+      document.getElementById('sc'+i).classList.add('done');
+      const conn = document.getElementById('conn'+i);
+      if(conn) conn.classList.add('done');
+    }
+    document.getElementById('sc'+n).classList.add('active');
+    document.getElementById('sl'+n).classList.add('active');
+    if(n===4) updateSummary();
+  }
+
+  // ── File input ──
+  const fileInput = document.getElementById('fileInput');
+  const dropzone  = document.getElementById('dropzone');
+  const step1Next = document.getElementById('step1Next');
+
+  fileInput.addEventListener('change', function(){
+    if(this.files && this.files[0]){
+      const msg = document.getElementById('fileSelectedMsg');
+      msg.textContent = '✅ ' + this.files[0].name + ' selected';
+      msg.style.display = 'block';
+      step1Next.disabled = false;
+    }
+  });
+
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if(e.dataTransfer.files[0]){
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    }
+  });
+
+  // ── Recipient search ──
+  function filterRecipients(){
+    const q = document.getElementById('recipientSearch').value.toLowerCase();
+    document.querySelectorAll('#recipientList .recipient-item').forEach(el => {
+      el.style.display = el.querySelector('.recipient-name').textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+
+  // ── Summary ──
+  function updateSummary(){
+    const f = fileInput.files[0];
+    document.getElementById('summaryFile').textContent = f ? f.name : '—';
+    const checked = [...document.querySelectorAll('[name=recipients]:checked')].map(
+      cb => cb.closest('.recipient-item').querySelector('.recipient-name').textContent
+    );
+    document.getElementById('summaryRecipients').textContent =
+      checked.length ? 'You + ' + checked.join(', ') : 'You only';
+  }
+
+  // ── Upload progress (legacy sync overlay, kept for step wizard) ──
+  const steps = [
+    { title:'Encrypting file…', sub:'Generating secure encryption key' },
+    { title:'Signing file…',    sub:'Creating digital signature' },
+    { title:'Uploading…',       sub:'Transferring securely to server' },
+  ];
+  function showProgress(){
+    document.getElementById('uploadProgress').classList.add('active');
+    let i=0;
+    const iv = setInterval(()=>{
+      if(i >= steps.length){ clearInterval(iv); return; }
+      document.getElementById('progressTitle').textContent = steps[i].title;
+      document.getElementById('progressSub').textContent   = steps[i].sub;
+      i++;
+    }, 900);
+  }
+
+  // ── Async upload with real-time progress bar ──
+  async function startUpload() {
+    const btn  = document.getElementById('uploadBtn');
+    const form = document.getElementById('uploadForm');
+    const wrap = document.getElementById('progress-wrap');
+    const bar  = document.getElementById('progress-bar');
+    const msg  = document.getElementById('progress-msg');
+    const pct  = document.getElementById('progress-pct');
+    const err  = document.getElementById('upload-error');
+
+    btn.disabled       = true;
+    wrap.style.display = 'block';
+    err.style.display  = 'none';
+    msg.textContent    = 'Uploading file…';
+
+    // Submit form data as multipart via fetch so the page doesn't navigate away
+    const formData = new FormData(form);
+    let taskId;
+    try {
+      const res  = await fetch('/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.msg || 'Upload failed');
+      taskId = data.task_id;
+    } catch (e) {
+      err.textContent    = e.message;
+      err.style.display  = 'block';
+      btn.disabled       = false;
+      wrap.style.display = 'none';
+      return;
+    }
+
+    // Poll /upload-status/<taskId> every 2 seconds
+    const poll = setInterval(async () => {
+      try {
+        const res  = await fetch(`/upload-status/${taskId}`);
+        const data = await res.json();
+
+        if (data.state === 'PROGRESS' || data.state === 'PENDING') {
+          bar.style.width = (data.percent || 0) + '%';
+          msg.textContent = data.msg || 'Processing…';
+          pct.textContent = (data.percent || 0) + '%';
+        } else if (data.state === 'SUCCESS') {
+          clearInterval(poll);
+          bar.style.width = '100%';
+          msg.textContent = 'Upload complete! Redirecting…';
+          pct.textContent = '100%';
+          setTimeout(() => window.location.href = data.redirect, 800);
+        } else {
+          clearInterval(poll);
+          err.textContent    = data.msg || 'Upload failed.';
+          err.style.display  = 'block';
+          btn.disabled       = false;
+          wrap.style.display = 'none';
+        }
+      } catch (e) {
+        clearInterval(poll);
+        err.textContent   = 'Lost connection. Please check your files.';
+        err.style.display = 'block';
+      }
+    }, 2000);  // poll every 2 seconds
+  }
+</script>
+{% endblock %}

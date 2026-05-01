@@ -1,0 +1,466 @@
+================================================================================
+           SECURESHARE — PROJECT FEATURES AND FUNCTIONS DOCUMENTATION
+================================================================================
+Project Name  : SecureShare (Org-Scoped Encrypted File Sharing)
+Framework     : Python / Flask + Celery + Redis
+Date Updated  : 2026-05-01
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. PROJECT OVERVIEW
+────────────────────────────────────────────────────────────────────────────────
+
+SecureShare is a production-grade, cryptographically secured file-sharing web
+application built with Python/Flask. It enforces organisation-scoped access
+control — only members of the same organisation can share files with one
+another. Every file is encrypted at rest using AES-256-GCM, signed by the
+sender, and the signature is verified before any byte is streamed on download,
+ensuring end-to-end confidentiality, integrity, and authenticity.
+
+File uploads are processed asynchronously via Celery and Redis, giving users
+an immediate response with a real-time progress bar instead of blocking the
+HTTP request during encryption.
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. CORE SECURITY MODEL
+────────────────────────────────────────────────────────────────────────────────
+
+  • AES-256-GCM chunk-based (16 MB chunks, O(1) RAM) file encryption at rest.
+    Each chunk carries its own 12-byte random nonce + 16-byte GCM auth tag.
+    File format v2: [4B chunk_len][12B nonce][ciphertext + 16B GCM tag] × N
+  • RSA-2048/OAEP key wrapping: a unique AES session key per file is wrapped
+    individually for each recipient using their RSA public key.
+  • RSA-2048/PSS + SHA-256 digital signatures: sender signs every uploaded
+    file; signature verified before streaming begins on download.
+  • PBKDF2-HMAC-SHA256 (390,000 iterations, NIST 2023 minimum) + AES-256-CBC
+    for private-key envelope encryption — private keys NEVER stored in plaintext.
+  • SHA-256 OTP hashing: one-time passwords hashed before storage; plaintext
+    OTPs never persisted or logged.
+  • Organisation-scoped isolation: cross-organisation file access blocked at
+    the access-control layer.
+  • Immutable, hash-chained audit log (blockchain-style): each entry carries
+    the SHA-256 hash of the previous entry — tampering is detectable.
+  • Rate limiting on all authentication endpoints (Flask-Limiter).
+  • CSRF protection on all state-mutating routes (Flask-WTF).
+  • HttpOnly, SameSite=Lax session cookies; 30-minute session lifetime.
+  • Account lockout after 10 consecutive failed login attempts (15 min lock).
+  • OTP locked after 5 incorrect verification attempts.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. TECHNOLOGY STACK
+────────────────────────────────────────────────────────────────────────────────
+
+  Backend Framework   : Flask 3.0.0
+  ORM / Database      : Flask-SQLAlchemy 3.1.1 (SQLite — two separate DBs)
+                          auth.db  — users, organisations, audit logs
+                          files.db — file metadata, shares, access logs
+  Cryptography        : cryptography >= 42.0.0 (hazmat primitives)
+  Password Hashing    : bcrypt 4.1.2
+  CSRF Protection     : Flask-WTF 1.2.1
+  Rate Limiting       : Flask-Limiter 3.5.0
+  Async Task Queue    : Celery 5.3.6
+  Message Broker      : Redis 5.0.1 (broker + result backend)
+  HTTP Client         : requests 2.31.0
+  Email               : SMTP (Gmail by default) via smtplib
+  Frontend            : Jinja2 HTML templates + CSS + JavaScript
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. APPLICATION MODULES / FILE STRUCTURE
+────────────────────────────────────────────────────────────────────────────────
+
+  app.py                         — Flask application factory & CLI commands
+  config.py                      — Configuration (env-var loader, Celery keys)
+  extensions.py                  — Shared Flask extensions (db, csrf, limiter)
+  celery_app.py                  — Standalone Celery instance + init_celery()
+  tasks.py                       — async_upload Celery task
+  worker.py                      — Celery CLI entry point (celery -A worker:celery)
+
+  models/
+    auth_models.py               — User, Organization, OrgRequest, AuditLog,
+                                    LoginLog, PasswordReset
+    file_models.py               — File, FileShare, AccessLog, VerificationLog
+
+  routes/
+    auth_routes.py               — register, OTP verify, login, password change,
+                                    key download
+    file_routes.py               — upload (async), upload-status, download,
+                                    verify, revoke, access history, dashboard
+    admin_routes.py              — dashboard, org management, user approval,
+                                    audit chain verify
+
+  services/
+    crypto_service.py            — CryptoUtils (AES-256-GCM, RSA, PBKDF2, OTP)
+    auth_service.py              — Registration, authentication, key management
+    file_service.py              — process_upload, process_download, revoke
+    access_control.py            — File access permission enforcement
+    logging_service.py           — Hash-chained audit log write & verification
+
+  utils/
+    helpers.py                   — Login decorators, org member helpers,
+                                    safe file removal
+
+  otp_utils.py                   — OTP generation, hashing, session verification
+  email_utils.py                 — OTP email delivery via SMTP
+  templates/                     — 16 Jinja2 HTML templates
+  static/                        — CSS, JS, static assets
+  storage/
+    files/                       — Encrypted file blobs (UUID-named, GCM format)
+    keys/                        — Key storage directory
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. FEATURES BY CATEGORY
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────
+5.1 USER AUTHENTICATION
+────────────────────────
+
+  a) Registration (3 modes)
+     • Standalone — registers without an organisation.
+     • Create Organisation — registers and creates a new org; becomes admin.
+     • Join Organisation — registers and requests to join an existing org.
+
+  b) Email OTP Verification
+     • 6-digit OTP emailed on registration; SHA-256 hashed before storage.
+     • Expiry: 5 minutes. Max attempts: 5. Resend cooldown: 60 seconds.
+
+  c) Login — org and individual modes; account lockout on 10 failed attempts.
+  d) Logout — full session clear.
+  e) Change Password — re-encrypts RSA private key envelope with new password.
+
+────────────────────────────────────────────────────────────────────────────────
+5.2 CRYPTOGRAPHIC KEY MANAGEMENT
+────────────────────────────────────────────────────────────────────────────────
+
+  • RSA-2048 key pair generated per user at registration.
+  • Private key encrypted with PBKDF2+AES-256-CBC before DB storage.
+  • View/download private key (password-gated, rate-limited, audit-logged).
+  • Public key downloadable by any authenticated user.
+
+────────────────────────────────────────────────────────────────────────────────
+5.3 ASYNC FILE UPLOAD (Celery + Redis)
+────────────────────────────────────────────────────────────────────────────────
+
+  a) Non-blocking upload flow
+     1. Browser submits form via fetch() — no page navigation.
+     2. Flask saves the file to a temp path immediately and queues a Celery
+        task, returning HTTP 202 + {task_id} to the browser in < 1 second.
+     3. async_upload task runs in the worker process:
+          5 %  → Starting encryption
+         30 %  → Encrypting file (AES-256-GCM, 16 MB chunks)
+         60 %  → Wrapping keys for recipients (RSA-OAEP per recipient)
+         85 %  → Saving file records (DB writes)
+         95 %  → Finalising
+        100 %  → SUCCESS / FAILURE
+     4. Browser polls GET /upload-status/<task_id> every 2 seconds.
+     5. On SUCCESS the progress bar hits 100 % and the page auto-redirects
+        to /my-files after 800 ms.
+     6. On FAILURE an error message is shown and the upload button re-enables.
+
+  b) _DiskFile adapter — allows the existing process_upload() to be called
+     with an already-saved temp file without any code changes.
+
+  c) Temp file cleanup — if the task raises any exception, _safe_remove()
+     deletes the orphaned temp file before re-raising.
+
+────────────────────────────────────────────────────────────────────────────────
+5.4 FILE ENCRYPTION (AES-256-GCM, File Format v2)
+────────────────────────────────────────────────────────────────────────────────
+
+  • Every chunk (up to 16 MB) is encrypted with a fresh 12-byte random nonce.
+  • GCM provides authenticated encryption — ciphertext tampering is detected
+    per-chunk before any plaintext is produced.
+  • File format: [4B big-endian payload length][12B nonce][ciphertext+16B tag]
+  • No per-file IV stored in the database — nonces are embedded inline.
+  • Memory usage is O(16 MB) regardless of file size.
+  • SHA-256 of the plaintext is computed during encryption and signed with
+    the sender's RSA-2048/PSS private key.
+
+────────────────────────────────────────────────────────────────────────────────
+5.5 SECURE DOWNLOAD & SIGNATURE VERIFICATION
+────────────────────────────────────────────────────────────────────────────────
+
+  4-step mandatory pipeline:
+  Step 1 — Recover AES session key (RSA-OAEP decrypt with recipient private key)
+  Step 2 — Compute plaintext SHA-256 in memory WITHOUT writing to disk
+  Step 3 — Verify RSA-PSS signature BEFORE streaming any bytes
+  Step 4 — Stream plaintext to client via generator (no disk write)
+
+  Every download attempt logs to AccessLog + VerificationLog (VALID/INVALID).
+
+────────────────────────────────────────────────────────────────────────────────
+5.6 FILE ACCESS MANAGEMENT
+────────────────────────────────────────────────────────────────────────────────
+
+  • Expiry time per share (access automatically denied after the datetime).
+  • Per-recipient download limit (enforced at access-control layer).
+  • Revoke access at any time (sets is_revoked = True on FileShare record).
+  • File access history — chronological JSON log of all access events.
+  • Standalone signature verification without downloading the file.
+
+────────────────────────────────────────────────────────────────────────────────
+5.7 ORGANISATION MANAGEMENT
+────────────────────────────────────────────────────────────────────────────────
+
+  • Create / list organisations. Unique names enforced system-wide.
+  • Join request workflow: user requests → admin approves/rejects.
+  • Admin can remove members from the organisation.
+  • Cross-organisation file access is blocked at every layer.
+
+────────────────────────────────────────────────────────────────────────────────
+5.8 ADMIN DASHBOARD
+────────────────────────────────────────────────────────────────────────────────
+
+  • Summary stats: total users, pending requests, total files.
+  • User management: approve/reject join requests, remove members.
+  • Audit log viewer: last 100 entries with actor, action, target, timestamp.
+  • Verify audit log chain integrity (SHA-256 hash chain check).
+  • Download raw encrypted file blob (.enc) for forensic inspection.
+
+────────────────────────────────────────────────────────────────────────────────
+5.9 HASH-CHAINED AUDIT LOG
+────────────────────────────────────────────────────────────────────────────────
+
+  • Every sensitive action writes an AuditLog record.
+  • current_hash = SHA-256(actor + action + target + details + timestamp + prev_hash)
+  • First record uses "GENESIS" as prev_hash.
+  • Admin can trigger full chain verification to detect any tampering.
+
+  Logged events include: ACCOUNT_REGISTERED, LOGIN_SUCCESS, LOGIN_BLOCKED,
+  ACCOUNT_LOCKED, PASSWORD_CHANGED, PRIVATE_KEY_VIEWED, FILE_UPLOADED,
+  FILE_DOWNLOADED, SIGNATURE_INVALID, ACCESS_DENIED, ACCESS_REVOKED,
+  ORG_CREATED, JOIN_REQUEST, USER_APPROVED, USER_REJECTED, USER_REMOVED.
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. DATA MODELS SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌─────────────────────┬──────────────────────────────────────────────────┐
+  │ Model               │ Key Fields                                       │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ User                │ username, email, password_hash, public_key,      │
+  │                     │ private_key (encrypted), is_approved, is_admin,  │
+  │                     │ organization_id, otp_hash, otp_expiry,           │
+  │                     │ failed_login_attempts, account_locked_until      │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ Organization        │ org_name (unique), created_by, created_at        │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ OrgRequest          │ user_id, organization_id, status, resolved_at    │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ AuditLog            │ actor_id, org_id, action, target_id, details,    │
+  │                     │ timestamp, prev_hash, current_hash               │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ File                │ filename, stored_filename (UUID), owner_id,      │
+  │                     │ sender_id, file_size, iv (b'' in GCM format),   │
+  │                     │ encrypted_aes_key, digital_signature             │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ FileShare           │ file_id, user_id, encrypted_aes_key,             │
+  │                     │ expiry_time, download_limit, download_count,     │
+  │                     │ is_revoked                                       │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ AccessLog           │ file_id, user_id, access_time, ip_address,       │
+  │                     │ verification_status (VALID/INVALID)              │
+  ├─────────────────────┼──────────────────────────────────────────────────┤
+  │ VerificationLog     │ file_id, verified_by, verification_status,       │
+  │                     │ verification_time, ip_address                    │
+  └─────────────────────┴──────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. DEPLOYMENT & CONFIGURATION
+────────────────────────────────────────────────────────────────────────────────
+
+  Required services:
+    Redis (broker + result backend):  redis-server   (port 6379)
+
+  Terminal 1 — Redis:
+    redis-server
+
+  Terminal 2 — Celery worker (Windows):
+    celery -A worker:celery worker --pool=solo --loglevel=info
+
+  Terminal 2 — Celery worker (Linux/macOS):
+    celery -A worker:celery worker --loglevel=info --concurrency=4
+
+  Terminal 3 — Flask:
+    flask run
+
+  Key .env / config.py settings:
+    SECRET_KEY              Flask session signing key
+    CELERY_BROKER_URL       Redis URL (default: redis://localhost:6379/0)
+    CELERY_RESULT_BACKEND   Redis URL (default: redis://localhost:6379/0)
+    MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD
+    OTP_EXPIRY_MINUTES      (default: 5)
+    MAX_OTP_ATTEMPTS        (default: 5)
+    MAX_LOGIN_ATTEMPTS      (default: 10)
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. HOW SECURESHARE DIFFERS FROM EXISTING SYSTEMS
+────────────────────────────────────────────────────────────────────────────────
+
+Most popular file-sharing platforms (Google Drive, Dropbox, WeTransfer,
+SharePoint, Box) and even many "secure" alternatives (Tresorit, Keybase,
+OnionShare) differ from SecureShare in the following fundamental ways:
+
+──────────────────────────────────────────
+8.1 ENCRYPTION — AUTHENTICATED vs. UNAUTHENTICATED
+──────────────────────────────────────────
+
+  Existing systems:
+    • Most commercial platforms encrypt files on the server side using keys
+      that the SERVICE controls and can access. The provider can read your
+      files at any time (e.g. for compliance, advertising, or under subpoena).
+    • Even "client-side encrypted" services (e.g. Tresorit, ProtonDrive) often
+      use AES-CBC or older modes without per-chunk authentication.
+
+  SecureShare:
+    • Uses AES-256-GCM — an authenticated encryption mode. Every 16 MB chunk
+      has a GCM authentication tag. If any bit of the ciphertext is altered,
+      decryption raises InvalidTag before any plaintext is produced.
+    • Keys are generated on the server for the user's RSA key pair, but the
+      private key is immediately encrypted with PBKDF2+AES-256-CBC using the
+      user's own password. The server never holds an unencrypted private key.
+    • The AES session key for each file is wrapped with the RECIPIENT'S RSA
+      public key — only the intended recipient can unwrap it.
+
+──────────────────────────────────────────
+8.2 DIGITAL SIGNATURES — MANDATORY SENDER AUTHENTICATION
+──────────────────────────────────────────
+
+  Existing systems:
+    • No mainstream file-sharing service attaches a cryptographic signature
+      from the sender's private key to each file. "Integrity checks" (if any)
+      are server-generated checksums (MD5/SHA) that the server itself could
+      forge, providing no proof of sender identity.
+
+  SecureShare:
+    • Every uploaded file is signed with the sender's RSA-2048/PSS private key
+      over the SHA-256 hash of the plaintext.
+    • The signature is verified on EVERY download before a single byte is
+      streamed. A tampered or substituted file is rejected with a clear error.
+    • Recipients can also run standalone signature verification without
+      downloading, getting a VALID/INVALID result with the recomputed hash.
+
+──────────────────────────────────────────
+8.3 ZERO SERVER KNOWLEDGE OF FILE CONTENT
+──────────────────────────────────────────
+
+  Existing systems:
+    • Providers decrypt files on their servers for thumbnails, virus scanning,
+      search indexing, or AI processing. The provider inherently sees content.
+
+  SecureShare:
+    • No plaintext ever touches the server disk during download — the stream_
+      decrypt() generator decrypts each chunk in memory and yields it directly
+      to the HTTP response. Plaintext exists only in RAM for < 16 MB at a time.
+    • During upload, the plaintext temp file is deleted immediately after
+      encryption. The stored blob is ciphertext only.
+
+──────────────────────────────────────────
+8.4 ORGANISATION-SCOPED ACCESS CONTROL
+──────────────────────────────────────────
+
+  Existing systems:
+    • Cloud platforms use link-based sharing (anyone with the link) or
+      email-based sharing with no verification of organisational membership.
+    • Admins typically cannot enforce that files stay within a defined group.
+
+  SecureShare:
+    • Sharing is enforced at the database layer — you can only share with
+      members of your own organisation. Cross-org access is denied at the
+      access_control layer, NOT just hidden in the UI.
+    • Org membership requires admin approval. Admins can revoke membership
+      and access at any time.
+
+──────────────────────────────────────────
+8.5 IMMUTABLE TAMPER-EVIDENT AUDIT LOG
+──────────────────────────────────────────
+
+  Existing systems:
+    • Activity logs exist but are controlled by the provider and can be altered
+      by the provider. Users cannot independently verify log integrity.
+    • Most platforms do not expose a cryptographic proof of log continuity.
+
+  SecureShare:
+    • Every sensitive action (login, upload, download, approval, revocation)
+      is written to a hash-chained AuditLog.
+    • current_hash = SHA-256(prev_hash + actor + action + target + timestamp)
+    • Any deletion or modification of a log entry breaks the chain. Admins
+      can run verify_audit_chain() at any time to check integrity.
+    • The chain starts from a "GENESIS" entry — analogous to a blockchain
+      genesis block — making retrospective falsification detectable.
+
+──────────────────────────────────────────
+8.6 GRANULAR ACCESS CONTROLS PER SHARE
+──────────────────────────────────────────
+
+  Existing systems:
+    • Dropbox/Drive offer expiry links but not per-recipient download limits.
+    • Revocation is often eventual (CDN caches), not immediate.
+
+  SecureShare:
+    • Per-share: optional expiry datetime, optional download limit per recipient.
+    • Revocation is immediate — is_revoked flag is checked on every access
+      attempt before the AES key is unwrapped. No caching of access rights.
+
+──────────────────────────────────────────
+8.7 ASYNCHRONOUS UPLOAD WITH REAL PROGRESS
+──────────────────────────────────────────
+
+  Existing systems:
+    • Client-side encrypted services (e.g. Tresorit) do encryption in the
+      browser with JavaScript, which is single-threaded and blocks the UI.
+      Progress bars show upload bytes, not encryption progress.
+
+  SecureShare:
+    • Encryption runs in a dedicated Celery worker process (separate CPU core).
+    • The HTTP request returns in < 1 second with a task_id.
+    • The browser polls /upload-status/<task_id> every 2 seconds and shows
+      real encryption-stage progress (5 % → 30 % → 60 % → 85 % → 95 % → 100 %).
+    • Large files (multi-GB) can be encrypted without browser timeout or UI lock.
+
+──────────────────────────────────────────
+8.8 OPEN & AUDITABLE CODEBASE
+──────────────────────────────────────────
+
+  Existing systems:
+    • Proprietary, closed-source. Security claims cannot be independently
+      verified. Users must trust the vendor's word.
+
+  SecureShare:
+    • Every cryptographic primitive is explicitly coded using the Python
+      `cryptography` library (hazmat layer). No black-box SDKs.
+    • All security-critical paths (encrypt, decrypt, sign, verify) are
+      contained in a single file (crypto_service.py) with full docstrings.
+    • The entire codebase can be audited, forked, and self-hosted.
+
+──────────────────────────────────────────
+8.9 SUMMARY COMPARISON TABLE
+──────────────────────────────────────────
+
+  Feature                          Google Drive  Dropbox  Tresorit  SecureShare
+  ──────────────────────────────── ───────────── ──────── ──────── ────────────
+  Client-side encryption           ✗             ✗        ✓         ✓
+  Authenticated encryption (GCM)   ✗             ✗        ✗         ✓
+  Per-file sender digital sig.     ✗             ✗        ✗         ✓
+  Signature verified on download   ✗             ✗        ✗         ✓
+  Zero plaintext on server disk    ✗             ✗        ✓         ✓
+  Org-scoped sharing enforcement   Partial       Partial  ✗         ✓
+  Tamper-evident audit log chain   ✗             ✗        ✗         ✓
+  Per-recipient download limit     ✗             ✗        ✗         ✓
+  Immediate access revocation      Partial       Partial  ✓         ✓
+  Real encryption-stage progress   ✗             ✗        ✗         ✓
+  Fully auditable open codebase    ✗             ✗        ✗         ✓
+  Self-hostable                    ✗             ✗        ✗         ✓
+
+
+================================================================================
+                          END OF DOCUMENTATION
+================================================================================

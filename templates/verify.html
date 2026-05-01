@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="verify-card">
+    <h2>🔍 Signature Verification Report</h2>
+
+    <div class="verify-banner {{ 'verify-ok' if result.verified else 'verify-fail' }}">
+        <span class="verify-icon">{{ '✅' if result.verified else '❌' }}</span>
+        <span class="verify-msg">{{ result.message }}</span>
+    </div>
+
+    <table class="verify-table">
+        <tr>
+            <th>File</th>
+            <td>{{ result.filename }}</td>
+        </tr>
+        <tr>
+            <th>Sender</th>
+            <td>{{ result.sender }}</td>
+        </tr>
+        <tr>
+            <th>Upload Time</th>
+            <td>{{ result.timestamp or '—' }}</td>
+        </tr>
+        <tr>
+            <th>Signature Status</th>
+            <td>
+                {% if result.verified %}
+                <span class="badge badge-success">VALID — Authentic &amp; Unmodified</span>
+                {% else %}
+                <span class="badge badge-danger">INVALID — Tampered or Corrupt</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>SHA-256 Hash (recomputed)</th>
+            <td style="font-family:monospace;word-break:break-all;font-size:11px;">{{ result.recomputed_hash }}</td>
+        </tr>
+    </table>
+
+    {% if result.sender_public_key %}
+    <details style="margin-top:16px;">
+        <summary style="cursor:pointer;color:#2980b9;font-size:13px;font-weight:600;">
+            🔑 Sender's Public Key
+        </summary>
+        <textarea readonly
+            style="width:100%;height:110px;font-family:monospace;font-size:10px;margin-top:8px;background:#f8f9fa;">{{ result.sender_public_key }}</textarea>
+    </details>
+    {% endif %}
+
+    <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+        {% if result.verified %}
+        <a href="{{ url_for('file.download_file', file_id=result.file_id) }}">
+            <button class="btn-primary">⬇️ Download Verified File</button>
+        </a>
+        {% endif %}
+        <a href="{{ url_for('file.dashboard') }}">
+            <button class="btn-secondary">← Dashboard</button>
+        </a>
+    </div>
+</div>
+
+<style>
+    .verify-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 32px;
+        max-width: 700px;
+        margin: 0 auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, .08);
+    }
+
+    .verify-banner {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 18px 22px;
+        border-radius: 10px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        margin-bottom: 22px;
+    }
+
+    .verify-ok {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .verify-fail {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .verify-icon {
+        font-size: 1.8rem;
+    }
+
+    .verify-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    .verify-table th {
+        text-align: left;
+        padding: 9px 12px;
+        background: #f8f9fa;
+        color: #495057;
+        width: 180px;
+        border: 1px solid #dee2e6;
+    }
+
+    .verify-table td {
+        padding: 9px 12px;
+        border: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
