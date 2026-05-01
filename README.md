@@ -314,22 +314,7 @@ Recipient downloads a file
 
 ---
 
-## Security Comparison
 
-| Feature | Google Drive | Dropbox | Tresorit | **SecureShare** |
-|---|:---:|:---:|:---:|:---:|
-| Client-side encryption | ✗ | ✗ | ✓ | ✅ |
-| Authenticated encryption (GCM) | ✗ | ✗ | ✗ | ✅ |
-| Per-file sender digital signature | ✗ | ✗ | ✗ | ✅ |
-| Signature verified on every download | ✗ | ✗ | ✗ | ✅ |
-| Zero plaintext written to server disk | ✗ | ✗ | ✓ | ✅ |
-| Org-scoped sharing enforcement | Partial | Partial | ✗ | ✅ |
-| Tamper-evident hash-chained audit log | ✗ | ✗ | ✗ | ✅ |
-| Per-recipient download limits | ✗ | ✗ | ✗ | ✅ |
-| Immediate access revocation | Partial | Partial | ✓ | ✅ |
-| Real-time download count updates (SSE) | ✗ | ✗ | ✗ | ✅ |
-| Fully auditable open codebase | ✗ | ✗ | ✗ | ✅ |
-| Self-hostable | ✗ | ✗ | ✗ | ✅ |
 
 ---
 
